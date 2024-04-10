@@ -1,0 +1,2 @@
+docker run -d --name batch_job -p 4041:4040 --network mobility_infr -e INPUT_PATH=hdfs://namenode:9000/user/root/input/emission_data_og.csv -e TIME_PERIOD_DURATION=45 batch-job
+docker run -d --name streaming_job -p 4040:4040 --network mobility_infr -e TIME_PERIOD_DURATION=45 -e NUM_PERIODS=4 streaming-job

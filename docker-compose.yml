@@ -9,7 +9,6 @@ services:
       - SPARK_MODE=master
     ports:
       - '8080:8080'
-      - '4040:4040'
   spark-worker:
     container_name: spark-worker
     image: docker.io/bitnami/spark:latest
@@ -66,24 +65,103 @@ services:
 
       echo 'Creating kafka topics'
       ./kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic traffic_data
-      ./kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic results
+      ./kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic predictions
+      ./kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic raw_data
 
       echo 'Successfully created the following topics:'
       ./kafka-topics.sh --bootstrap-server kafka:9092 --list"
-        
-        
+
+
+  # --------------- #
+  # Consumer        #
+  # --------------- #
+  consumer_raw:
+    image: consumer
+    container_name: consumer_raw
+    restart: always
+    volumes:
+     - ./results:/results
+    environment:
+     - TOPIC=raw_data
+     - OUTPUT_FILE=/results/raw.csv
+    depends_on:
+      init-kafka:
+        condition: service_completed_successfully
+
+  consumer_predictions:
+    image: consumer
+    container_name: consumer_predictions
+    restart: always
+    volumes:
+     - ./results:/results
+    environment:
+     - TOPIC=predictions
+     - OUTPUT_FILE=/results/predictions.csv
+    depends_on:
+      init-kafka:
+        condition: service_completed_successfully
+
+
+
+  # --------------- #
+  # Hadoop          #
+  # --------------- #
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    restart: always
+    ports:
+      - 9870:9870
+      - 9000:9000
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=mobility
+    env_file:
+      - ./hadoop.env
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    restart: always
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+      - ./hadoop.env
+
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864"
+    env_file:
+      - ./hadoop.env
+
+  nodemanager:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088"
+    env_file:
+      - ./hadoop.env
         
 networks:
   default:
       name: mobility_infr
       
 volumes:
+  hadoop_namenode:
+    driver: local
+  hadoop_datanode:
+    driver: local
+  hadoop_historyserver:
+    driver: local
   zookeeper_data:
     driver: local
   kafka_data:
-    driver: local
-  cassandra_data1:
-    driver: local
-  cassandra_data2:
     driver: local
   
